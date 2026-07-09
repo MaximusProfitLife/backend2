@@ -39,13 +39,19 @@ def obtener_datos_historicos_unificados(simbolo, timeframe='4h', lookback_velas=
 
     for name, exchange in exchanges_conectados.items():
         try:
+            # 1. Ajuste de seguridad: Tiempo de espera corto para no bloquearse
+            exchange.timeout = 5000 
+            
             exchange.load_markets()
             market = exchange.market(symbol_ccxt)
             contract_size = float(market.get('contractSize', 1.0))
             
             ohlcv = exchange.fetch_ohlcv(symbol_ccxt, timeframe=timeframe, limit=lookback_velas)
-            if not ohlcv or len(ohlcv) < 2:
-                continue
+            
+            # 2. Validación estricta: Si el exchange falla o da datos basura, saltamos al siguiente
+            if not ohlcv or len(ohlcv) < lookback_velas:
+                print(f"⚠️ {name} devolvió datos insuficientes o está bloqueado.")
+                continue 
                 
             df_temp = pd.DataFrame(ohlcv, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume_Raw'])
             df_temp['Timestamp'] = pd.to_datetime(df_temp['Timestamp'], unit='ms')
@@ -57,8 +63,16 @@ def obtener_datos_historicos_unificados(simbolo, timeframe='4h', lookback_velas=
                 df_final = df_temp
             else:
                 df_final = pd.merge(df_final, df_temp, on='Timestamp', how='outer')
-        except Exception:
+                
+        # ... (dentro de tu bucle for) ...
+        except Exception as e:
+            # La sangría (espacios a la izquierda) es obligatoria aquí
+            print(f"❌ ERROR CRÍTICO EN EXCHANGE {name}: {e}")
             continue
+    
+    # Después del bucle, continúa el resto de la función...
+    
+    # ... (resto de tu lógica de unión sigue igual)
 
     if df_final is None or df_final.empty:
         return pd.DataFrame()
