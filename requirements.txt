@@ -1,0 +1,5 @@
+flask
+pandas
+ccxt
+python-telegram-bot
+python-dotenv
