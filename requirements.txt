@@ -7,5 +7,3 @@ pyTelegramBotAPI
 python-telegram-bot
 python-dotenv
 schedule
-time
-random
