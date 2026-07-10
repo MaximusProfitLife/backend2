@@ -19,18 +19,19 @@ scripts = [
 ]
 
 def ejecutar_script(nombre_script):
-    """Ejecuta un script de Python como un proceso independiente."""
+    """Ejecuta un script de Python como un proceso independiente y asíncrono."""
     print(f"🚀 Lanzando {nombre_script}...")
-    subprocess.run([sys.executable, nombre_script])
+    # Popen inicia el proceso y continúa sin esperar, permitiendo la simultaneidad
+    subprocess.Popen([sys.executable, nombre_script])
 
 if __name__ == "__main__":
     print("🚀 INICIANDO ORQUESTADOR DE BOTS...")
     
-    # Lanzar cada bot en un hilo separado para que no bloqueen el servidor Flask
+    # Lanzar cada bot en un hilo separado
     for script in scripts:
         hilo = Thread(target=ejecutar_script, args=(script,), daemon=True)
         hilo.start()
     
-    # Iniciar servidor Flask (necesario para mantener el contenedor encendido en Railway/Zeabur)
+    # Iniciar servidor Flask
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
