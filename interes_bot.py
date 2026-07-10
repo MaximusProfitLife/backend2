@@ -13,6 +13,9 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext, 
 load_dotenv()
 TOKEN_TELEGRAM = os.getenv('TELEGRAM_TOKEN')
 
+EXCHANGES_CONFIG = ['binance', 'bybit', 'bitget', 'okx', 'phemex']
+exchanges_conectados = {}
+
 # 3. Inicializamos los exchanges usando la URL construida
 for name in EXCHANGES_CONFIG:
     try:
@@ -23,7 +26,6 @@ for name in EXCHANGES_CONFIG:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         })
-        print(f"✅ {name} conectado vía proxy {proxy_host}")
     except Exception as e:
         print(f"❌ Error en {name}: {e}")
 
@@ -34,22 +36,24 @@ import time
 import random # <--- Asegúrate de tener esto arriba en los imports
 
 def obtener_datos_historicos_unificados(simbolo, timeframe='4h', lookback_velas=18):
-    # ... código anterior ...
+    df_final = None
+    # Definimos el símbolo aquí para que sea accesible en el bucle
+    cripto_base = simbolo.replace('USDT', '')
+    symbol_ccxt = f"{cripto_base}/USDT:USDT"
+
     for name, exchange in exchanges_conectados.items():
         try:
-            # --- HUMANIZACIÓN: Pausa aleatoria entre 1 y 3 segundos entre cada exchange ---
             time.sleep(random.uniform(1.0, 3.0))
-            
             exchange.timeout = 5000 
             exchange.load_markets()
-            # ... resto de tu código ...
+            
+            # Obtenemos el objeto market correctamente
+            market = exchange.market(symbol_ccxt)
             contract_size = float(market.get('contractSize', 1.0))
             
             ohlcv = exchange.fetch_ohlcv(symbol_ccxt, timeframe=timeframe, limit=lookback_velas)
             
-            # 2. Validación estricta: Si el exchange falla o da datos basura, saltamos al siguiente
             if not ohlcv or len(ohlcv) < lookback_velas:
-                print(f"⚠️ {name} devolvió datos insuficientes o está bloqueado.")
                 continue 
                 
             df_temp = pd.DataFrame(ohlcv, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume_Raw'])
@@ -62,33 +66,29 @@ def obtener_datos_historicos_unificados(simbolo, timeframe='4h', lookback_velas=
                 df_final = df_temp
             else:
                 df_final = pd.merge(df_final, df_temp, on='Timestamp', how='outer')
-                
-        # ... (dentro de tu bucle for) ...
         except Exception as e:
-            # La sangría (espacios a la izquierda) es obligatoria aquí
-            print(f"❌ ERROR CRÍTICO EN EXCHANGE {name}: {e}")
+            print(f"❌ Error en {name}: {e}")
             continue
-    
-    # Después del bucle, continúa el resto de la función...
-    
-    # ... (resto de tu lógica de unión sigue igual)
 
     if df_final is None or df_final.empty:
         return pd.DataFrame()
 
+    # Limpieza final
     df_final.sort_values('Timestamp', inplace=True)
     df_final.drop_duplicates(subset=['Timestamp'], keep='last', inplace=True)
-
+    
     col_closes = [c for c in df_final.columns if 'Close' in c]
     df_final['Close'] = df_final[col_closes].mean(axis=1)
-
+    
     col_volumenes = [c for c in df_final.columns if 'Volume_' in c]
     df_final[col_volumenes] = df_final[col_volumenes].fillna(0)
     df_final['Volume'] = df_final[col_volumenes].sum(axis=1)
-
+    
     df_final['Volatilidad'] = df_final['Close'].pct_change().rolling(window=6).std().fillna(df_final['Close'].pct_change().std())
     df_final.rename(columns={'Timestamp': 'Close time'}, inplace=True)
+    
     return df_final[['Close time', 'Close', 'Volume', 'Volatilidad']].reset_index(drop=True)
+    
 
 
 def obtener_interes_abierto_actual(simbolo):
@@ -378,6 +378,12 @@ def correr_bot1():
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         print("\n👋 Bot 1 finalizado.")
+        
+        # ... (todo tu código anterior)
+
+# AÑADE ESTO AL FINAL DEL ARCHIVO
+if __name__ == "__main__":
+    correr_bot1()
         
 
 
