@@ -46,7 +46,7 @@ def send_telegram_message(message):
 # 🔹 Configuración de exchanges y pares
 # ===========================
 exchanges_liquidos = ["binance", "kraken", "bybit", "coinbase", "okx", "bitfinex", "kucoin", "gate", "bingx", "bitget", "mexc", "whitebit", "coinex", "deribit", "bitmex"]
-pares_liquidos = ['ADA/USDT', 'BTC/USDT', 'ETH/USDT']
+pares_liquidos = ['BTC/USDT', 'ETH/USDT']
 
 # ===========================
 # 🔹 Función para obtener datos OHLCV
