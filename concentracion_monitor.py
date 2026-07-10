@@ -151,10 +151,15 @@ async def ciclo_principal():
         await procesar_analisis()
         await asyncio.sleep(900)
 
+# ... (aquí va todo tu código anterior) ...
+
 def correr_concentracion():
     try:
         asyncio.run(ciclo_principal())
     except KeyboardInterrupt:
         print("🛑 Monitor de concentración apagado.")
 
-
+# ESTO ES LO QUE DEBES PEGAR AL FINAL:
+if __name__ == '__main__':
+    print("🚀 MONITOR DE CONCENTRACIÓN ACTIVADO")
+    correr_concentracion()

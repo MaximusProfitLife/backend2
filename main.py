@@ -1,25 +1,35 @@
 import os
-import interes_bot
+import subprocess
+import sys
 from flask import Flask
-import threading
+from threading import Thread
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Ecosistema de Análisis de Interés Abierto Activo"
+    return "Ecosistema MaximusProftLife Activo"
 
-def arrancar_interes_bot():
-    # Lanzamos el motor de interés que es asíncrono
-    interes_bot.correr_bot1()
+# Lista de scripts a ejecutar
+scripts = [
+    "VOL_monitor.py",
+    "concentracion_monitor.py",
+    "patrones_liquidez_2.py"
+]
+
+def ejecutar_script(nombre_script):
+    """Ejecuta un script de Python como un proceso independiente."""
+    print(f"🚀 Lanzando {nombre_script}...")
+    subprocess.run([sys.executable, nombre_script])
 
 if __name__ == "__main__":
-    print("🚀 INICIANDO BOT DE ANÁLISIS DE FLUJO DE ÓRDENES...")
+    print("🚀 INICIANDO ORQUESTADOR DE BOTS...")
     
-    # Lanzar el hilo del bot
-    hilo_bot = threading.Thread(target=arrancar_interes_bot, daemon=True)
-    hilo_bot.start()
+    # Lanzar cada bot en un hilo separado para que no bloqueen el servidor Flask
+    for script in scripts:
+        hilo = Thread(target=ejecutar_script, args=(script,), daemon=True)
+        hilo.start()
     
-    # Iniciar servidor Flask para Zeabur
+    # Iniciar servidor Flask (necesario para mantener el contenedor encendido en Railway/Zeabur)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)

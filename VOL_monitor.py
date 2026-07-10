@@ -153,3 +153,8 @@ def correr_volumen():
         except Exception as e:
             print(f"⚠️ Error en bucle de volumen: {e}")
             time.sleep(60)
+
+# ESTO VA FUERA DE TODO, SIN NINGUNA SANGRÍA (ALINEADO A LA IZQUIERDA)
+if __name__ == '__main__':
+    print(f"🚀 MONITOR INTELIGENTE ACTIVADO - Usando {DB_FILE}")
+    correr_volumen()

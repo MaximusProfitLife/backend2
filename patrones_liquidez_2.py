@@ -216,6 +216,11 @@ def correr_liquidez():
     while True:
         schedule.run_pending()
         time.sleep(10)
+
+# ESTO VA AQUÍ, FUERA DE LA FUNCIÓN Y SIN ESPACIOS A LA IZQUIERDA:
+if __name__ == '__main__':
+    print("🚀 MONITOR DE LIQUIDEZ ACTIVADO")
+    correr_liquidez()
         
         
 
