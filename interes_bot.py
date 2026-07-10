@@ -13,21 +13,32 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext, 
 load_dotenv()
 TOKEN_TELEGRAM = os.getenv('TELEGRAM_TOKEN')
 
+# 1. Obtenemos los datos del proxy desde Railway
+proxy_host = os.getenv('PROXY_HOST')
+proxy_port = os.getenv('PROXY_PORT')
+proxy_user = os.getenv('PROXY_USER')
+proxy_pass = os.getenv('PROXY_PASS')
+
+# 2. Construimos la URL
+proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
+
 EXCHANGES_CONFIG = ['binance', 'bybit', 'bitget', 'okx', 'phemex']
 exchanges_conectados = {}
 
+# 3. Inicializamos los exchanges usando la URL construida
 for name in EXCHANGES_CONFIG:
     try:
-        # Añadimos 'headers' para simular un navegador
         exchanges_conectados[name] = getattr(ccxt, name)({
             'enableRateLimit': True,
             'options': {'defaultType': 'future'},
+            'proxy': proxy_url,  # <--- Aquí entra el proxy
             'headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
         })
+        print(f"✅ {name} conectado vía proxy {proxy_host}")
     except Exception as e:
-        print(f"⚠️ No se pudo inicializar {name}: {e}")
+        print(f"❌ Error en {name}: {e}")
 
 # ==============================================================================
 # 1. MOTOR DE CÁLCULO UNIFICADO MULTI-EXCHANGE
