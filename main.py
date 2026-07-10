@@ -14,8 +14,7 @@ def home():
 scripts = [
     "VOL_monitor.py",
     "concentracion_monitor.py",
-    "patrones_liquidez_2.py",
-    "interes_bot.py"
+    "patrones_liquidez_2.py"
 ]
 
 def ejecutar_script(nombre_script):

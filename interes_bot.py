@@ -103,8 +103,6 @@ def obtener_interes_abierto_actual(simbolo):
             info = exchange.fetch_open_interest(symbol_ccxt)
             if not info:
                 continue
-            
-            # Extracción del valor con manejo de errores de estructura
             if isinstance(info, list) and len(info) > 0:
                 val = float(info[-1].get('openInterest', 0) or info[-1].get('info', {}).get('openInterest', 0))
             else:
@@ -113,11 +111,8 @@ def obtener_interes_abierto_actual(simbolo):
             if val > 0:
                 oi_total += val
                 con_data += 1
-        except Exception as e:
-            # ESTO ES CRUCIAL: Ahora verás en tus logs qué exchange está fallando y por qué
-            print(f"⚠️ Error al obtener OI en {name}: {e}")
+        except Exception:
             continue
-            
     return oi_total if con_data > 0 else None
 
 
