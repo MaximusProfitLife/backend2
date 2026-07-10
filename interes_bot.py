@@ -13,25 +13,12 @@ from telegram.ext import Application, MessageHandler, filters, CallbackContext, 
 load_dotenv()
 TOKEN_TELEGRAM = os.getenv('TELEGRAM_TOKEN')
 
-# 1. Obtenemos los datos del proxy desde Railway
-proxy_host = os.getenv('PROXY_HOST')
-proxy_port = os.getenv('PROXY_PORT')
-proxy_user = os.getenv('PROXY_USER')
-proxy_pass = os.getenv('PROXY_PASS')
-
-# 2. Construimos la URL
-proxy_url = f"http://{proxy_user}:{proxy_pass}@{proxy_host}:{proxy_port}"
-
-EXCHANGES_CONFIG = ['binance', 'bybit', 'bitget', 'okx', 'phemex']
-exchanges_conectados = {}
-
 # 3. Inicializamos los exchanges usando la URL construida
 for name in EXCHANGES_CONFIG:
     try:
         exchanges_conectados[name] = getattr(ccxt, name)({
             'enableRateLimit': True,
             'options': {'defaultType': 'future'},
-            'proxy': proxy_url,  # <--- Aquí entra el proxy
             'headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
@@ -43,18 +30,19 @@ for name in EXCHANGES_CONFIG:
 # ==============================================================================
 # 1. MOTOR DE CÁLCULO UNIFICADO MULTI-EXCHANGE
 # ==============================================================================
-def obtener_datos_historicos_unificados(simbolo, timeframe='4h', lookback_velas=18):
-    cripto_base = simbolo.replace('USDT', '')
-    symbol_ccxt = f"{cripto_base}/USDT:USDT"
-    df_final = None
+import time
+import random # <--- Asegúrate de tener esto arriba en los imports
 
+def obtener_datos_historicos_unificados(simbolo, timeframe='4h', lookback_velas=18):
+    # ... código anterior ...
     for name, exchange in exchanges_conectados.items():
         try:
-            # 1. Ajuste de seguridad: Tiempo de espera corto para no bloquearse
-            exchange.timeout = 5000 
+            # --- HUMANIZACIÓN: Pausa aleatoria entre 1 y 3 segundos entre cada exchange ---
+            time.sleep(random.uniform(1.0, 3.0))
             
+            exchange.timeout = 5000 
             exchange.load_markets()
-            market = exchange.market(symbol_ccxt)
+            # ... resto de tu código ...
             contract_size = float(market.get('contractSize', 1.0))
             
             ohlcv = exchange.fetch_ohlcv(symbol_ccxt, timeframe=timeframe, limit=lookback_velas)
