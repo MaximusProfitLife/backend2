@@ -51,7 +51,7 @@ pares_liquidos = ['BTC/USDT', 'ETH/USDT']
 # ===========================
 # 🔹 Función para obtener datos OHLCV
 # ===========================
-def obtener_datos(exchange_name, symbol, timeframe='1h', limit=200):
+def obtener_datos(exchange_name, symbol, timeframe='4h', limit=200):
     try:
         exchange = getattr(ccxt, exchange_name)()
         exchange.timeout = 30000 
