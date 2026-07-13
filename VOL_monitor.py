@@ -80,6 +80,9 @@ def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
 def correr_volumen():
     memoria = cargar_memoria()
     ultima_alerta = memoria.get("ultima_alerta", 0)
+    estado_cero = memoria.get("estado_cero", "NEUTRAL") 
+    
+    print("🚀 MONITOR DE VOLUMEN INTELIGENTE ACTIVADO")
     
     while True:
         try:
@@ -106,17 +109,46 @@ def correr_volumen():
 
             actual = df["vol_returns"].iloc[-1]
             tiempo_actual = time.time()
+            disparar = False
+            tipo = ""
+
+            # Verificamos si podemos disparar (espera de 4 horas / 14400 seg)
+            if (tiempo_actual - ultima_alerta) > 14400:
+                
+                # 1. LÓGICA DE ANOMALÍA (BANDAS)
+                if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]):
+                    disparar = True
+                    tipo = "ANOMALÍA (BANDAS)"
+                
+                # 2. LÓGICA DE CRUCE CERO (CAMBIO DE ESTADO)
+                elif actual > 0 and estado_cero != "ARRIBA":
+                    disparar = True
+                    tipo = "CRUCE CERO (ARRIBA)"
+                    estado_cero = "ARRIBA"
+                elif actual < 0 and estado_cero != "ABAJO":
+                    disparar = True
+                    tipo = "CRUCE CERO (ABAJO)"
+                    estado_cero = "ABAJO"
+
+                # Ejecución de alerta
+                if disparar:
+                    print(f"🎯 Alerta detectada: {tipo}. Valor: {actual:.4f}")
+                    generar_foto_y_enviar(df, tipo, actual)
+                    
+                    ultima_alerta = tiempo_actual
+                    guardar_memoria({
+                        "ultima_alerta": ultima_alerta,
+                        "estado_cero": estado_cero
+                    })
+            else:
+                # Log de control para ver cuánto falta para habilitar alertas
+                minutos_restantes = (14400 - (tiempo_actual - ultima_alerta)) / 60
+                print(f"😴 En espera: Faltan {minutos_restantes:.0f} min para nueva alerta.")
             
-            # Disparar solo si rompe bandas y pasaron > 4 horas (14400 seg)
-            if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]) and (tiempo_actual - ultima_alerta > 14400):
-                print(f"🎯 Alerta detectada: {actual}. Enviando...")
-                generar_foto_y_enviar(df, "ANOMALÍA (BANDAS)", actual)
-                ultima_alerta = tiempo_actual
-                guardar_memoria({"ultima_alerta": ultima_alerta})
+            time.sleep(300) # Chequeo cada 5 minutos
             
-            time.sleep(300)
         except Exception as e:
-            print(f"Error en bucle: {e}")
+            print(f"⚠️ Error en bucle: {e}")
             time.sleep(60)
 
 if __name__ == '__main__':
