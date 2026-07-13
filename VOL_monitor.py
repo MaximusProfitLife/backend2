@@ -18,10 +18,24 @@ bot = TeleBot(TELEGRAM_TOKEN)
 THREAD_ID = 9
 DB_FILE = "volumen_monitor.json"
 
-EXCHANGES_IDS = ["binance", "kraken", "bybit", "coinbase", "okx", "bitfinex", "kucoin", "gate", "bingx", "bitget", "htx", "mexc", "whitebit", "coinex", "deribit", "bitmex", "phemex"]
+EXCHANGES_IDS = [
+    "binance", "kraken", "bybit", "coinbase", "okx", 
+    "bitfinex", "kucoin", "gate", "bingx", "bitget", "htx",
+    "mexc", "whitebit", "coinex", "deribit", "bitmex", "phemex"
+]
 PARES = ["BTC/USDT", "ETH/USDT"]
 
-# ... (tus funciones cargar_memoria y guardar_memoria se mantienen igual) ...
+def cargar_memoria():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except: return {}
+    return {}
+
+def guardar_memoria(memoria):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(memoria, f, indent=4)
 
 def get_volume_data():
     consolidated_data = {}
@@ -43,7 +57,7 @@ def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     plt.style.use('dark_background')
     fig, (ax, ax_bar) = plt.subplots(2, 1, figsize=(12, 9), sharex=True, gridspec_kw={'height_ratios': [2, 1]})
     
-    # Gráfico 1: Rendimiento y Bandas
+    # Gráfico 1: Rendimiento
     ax.fill_between(range(len(df)), df["lower"], df["upper"], color="gray", alpha=0.15)
     ax.plot(df["vol_returns"].values, color="#a85cfc", linewidth=1)
     ax.plot(df["upper"].values, color="#00ff88", linestyle="--", alpha=0.7)
@@ -52,46 +66,58 @@ def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     
     # Gráfico 2: Volumen USD
     ax_bar.bar(range(len(df)), df["Volume_USD"], color="blue", alpha=0.7)
+    ax_bar.set_ylabel("Millones USD")
     
     path = "alerta_volumen.png"
     plt.savefig(path, facecolor='#0d1117')
-    plt.close()
+    plt.close(fig)
 
     with open(path, 'rb') as f:
-        caption = f"🚨 ANOMALÍA DETECTADA\nTipo: {tipo_alerta}\nValor: {valor_actual:.4f}"
+        caption = f"🚨 **ANOMALÍA DETECTADA**\n\nTipo: `{tipo_alerta}`\nValor: `{valor_actual:.4f}`"
         bot.send_photo(CHAT_ID, f, caption=caption, message_thread_id=THREAD_ID, parse_mode='Markdown')
     if os.path.exists(path): os.remove(path)
 
 def correr_volumen():
+    memoria = cargar_memoria()
+    ultima_alerta = memoria.get("ultima_alerta", 0)
+    
     while True:
-        data, prices = get_volume_data()
-        if not data: continue
-        
-        # Calcular Volumen Total USD
-        total_vol_usd = None
-        for symbol in PARES:
-            if symbol in data and symbol in prices:
-                vols_avg = np.mean(data[symbol], axis=0)
-                if total_vol_usd is None: total_vol_usd = (vols_avg * np.array(prices[symbol])) / 1_000_000
-                else: total_vol_usd += (vols_avg * np.array(prices[symbol])) / 1_000_000
-        
-        df = pd.DataFrame(total_vol_usd, columns=["Volume_USD"])
-        df["vol_returns"] = df["Volume_USD"].pct_change()
-        
-        # AQUI ESTABA EL FALLO: Calculamos las bandas antes de comparar
-        ventana = 200
-        df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
-        df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
-        df["upper"] = df["mean_ret"] + (2 * df["std_ret"])
-        df["lower"] = df["mean_ret"] - (2 * df["std_ret"])
-        df = df.dropna()
+        try:
+            data, prices = get_volume_data()
+            if not data: 
+                time.sleep(60); continue
+            
+            total_vol_usd = None
+            for symbol in PARES:
+                if symbol in data and symbol in prices:
+                    vols_avg = np.mean(data[symbol], axis=0)
+                    if total_vol_usd is None: total_vol_usd = (vols_avg * np.array(prices[symbol])) / 1_000_000
+                    else: total_vol_usd += (vols_avg * np.array(prices[symbol])) / 1_000_000
+            
+            df = pd.DataFrame(total_vol_usd, columns=["Volume_USD"])
+            df["vol_returns"] = df["Volume_USD"].pct_change()
+            
+            ventana = 200
+            df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
+            df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
+            df["upper"] = df["mean_ret"] + (2 * df["std_ret"])
+            df["lower"] = df["mean_ret"] - (2 * df["std_ret"])
+            df = df.dropna()
 
-        # Comparar con los últimos valores del dataframe calculado
-        actual = df["vol_returns"].iloc[-1]
-        if actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]:
-             generar_foto_y_enviar(df, "ANOMALÍA (BANDAS)", actual)
-        
-        time.sleep(300)
+            actual = df["vol_returns"].iloc[-1]
+            tiempo_actual = time.time()
+            
+            # Disparar solo si rompe bandas y pasaron > 4 horas (14400 seg)
+            if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]) and (tiempo_actual - ultima_alerta > 14400):
+                print(f"🎯 Alerta detectada: {actual}. Enviando...")
+                generar_foto_y_enviar(df, "ANOMALÍA (BANDAS)", actual)
+                ultima_alerta = tiempo_actual
+                guardar_memoria({"ultima_alerta": ultima_alerta})
+            
+            time.sleep(300)
+        except Exception as e:
+            print(f"Error en bucle: {e}")
+            time.sleep(60)
 
 if __name__ == '__main__':
     correr_volumen()
