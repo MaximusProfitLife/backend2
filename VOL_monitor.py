@@ -95,9 +95,10 @@ def correr_volumen():
     while True:
         try:
             data, prices = get_volume_data()
-            if not data: continue
+            if not data: 
+                time.sleep(60)
+                continue
             
-            # Consolidar Volumen en USD
             total_vol_usd = 0
             for symbol in PARES:
                 if symbol in data and symbol in prices:
@@ -106,19 +107,21 @@ def correr_volumen():
             
             df = pd.DataFrame(total_vol_usd, columns=["Volume_USD"])
             df["vol_returns"] = df["Volume_USD"].pct_change()
-            
-            ventana = 200
-            df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
-            df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
-            df["upper"] = df["mean_ret"] + (2 * df["std_ret"])
-            df["lower"] = df["mean_ret"] - (2 * df["std_ret"])
             df = df.dropna()
+
+            # --- ESTA ES LA VALIDACIÓN QUE TE FALTA ---
+            if df.empty:
+                print("DataFrame vacío, esperando más datos...")
+                time.sleep(60)
+                continue
+            # ------------------------------------------
 
             actual = df["vol_returns"].iloc[-1]
             timestamp_actual = time.time()
             disparar = False
             tipo = ""
 
+            # ... (tu lógica de disparar sigue igual)
             if actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]:
                 if (timestamp_actual - ultima_alerta_anomalia) > 14400:
                     disparar = True
@@ -141,7 +144,7 @@ def correr_volumen():
             else:
                 time.sleep(300)
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error en bucle: {e}")
             time.sleep(60)
 
 if __name__ == '__main__':
