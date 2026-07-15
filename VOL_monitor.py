@@ -16,47 +16,44 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID_GRUPO_VIP')
 bot = TeleBot(TELEGRAM_TOKEN)
 THREAD_ID = 9
-DB_FILE = "volumen_monitor.json"
+DB_FILE = "volumen_monitor_btc.json"
+SYMBOL = "BTC/USDT"
 
 EXCHANGES_IDS = [
     "binance", "kraken", "bybit", "coinbase", "okx", 
     "bitfinex", "kucoin", "gate", "bingx", "bitget", "htx",
     "mexc", "whitebit", "coinex", "deribit", "bitmex", "phemex"
 ]
-PARES = ["BTC/USDT", "ETH/USDT"]
 
 def cargar_memoria():
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except: return {}
-    return {}
+        except: return {"ultima_alerta_tiempo": 0, "ultima_alerta_tipo": "", "estado_cero": "NEUTRAL"}
+    return {"ultima_alerta_tiempo": 0, "ultima_alerta_tipo": "", "estado_cero": "NEUTRAL"}
 
 def guardar_memoria(memoria):
     with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(memoria, f, indent=4)
 
 def get_volume_data():
-    # Estructura corregida: cada par tiene su propia lista de volúmenes por exchange
-    data_struct = {symbol: [] for symbol in PARES}
-    prices = {symbol: None for symbol in PARES}
-    
+    all_volumes = []
+    price_data = None
     for ex_id in EXCHANGES_IDS:
         try:
             exchange = getattr(ccxt, ex_id)({'timeout': 5000, 'enableRateLimit': True})
-            for symbol in PARES:
-                exch_symbol = "BTC/USD" if (ex_id == 'bitmex' and "BTC" in symbol) else symbol
-                ohlcv = exchange.fetch_ohlcv(exch_symbol, timeframe="1h", limit=720)
-                if len(ohlcv) < 720: continue
-                
-                vols = [candle[5] for candle in ohlcv]
-                data_struct[symbol].append(vols)
-                
-                if ex_id == "binance" and prices[symbol] is None:
-                    prices[symbol] = [candle[4] for candle in ohlcv]
+            exch_symbol = "BTC/USD" if (ex_id == 'bitmex') else SYMBOL
+            ohlcv = exchange.fetch_ohlcv(exch_symbol, timeframe="1h", limit=720)
+            if len(ohlcv) < 720: continue
+            
+            all_volumes.append([candle[5] for candle in ohlcv])
+            if ex_id == "binance" and price_data is None:
+                price_data = [candle[4] for candle in ohlcv]
         except: continue
-    return data_struct, prices
+    
+    if not all_volumes or price_data is None: return None, None
+    return np.mean(all_volumes, axis=0), price_data
 
 def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     plt.style.use('dark_background')
@@ -66,75 +63,69 @@ def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     ax.plot(df["vol_returns"].values, color="#a85cfc", linewidth=1)
     ax.plot(df["upper"].values, color="#00ff88", linestyle="--", alpha=0.7)
     ax.plot(df["lower"].values, color="#ff3333", linestyle="--", alpha=0.7)
-    ax.set_title(f"ALERTA MAXIMUS | {tipo_alerta}", color='yellow', fontweight='bold')
+    ax.set_title(f"ALERTA BTC | {tipo_alerta}", color='yellow', fontweight='bold')
     
     ax_bar.bar(range(len(df)), df["Volume_USD"], color="blue", alpha=0.7)
     ax_bar.set_ylabel("Millones USD")
     
-    path = "alerta_volumen.png"
+    path = "alerta_btc.png"
     plt.savefig(path, facecolor='#0d1117')
     plt.close(fig)
 
     with open(path, 'rb') as f:
-        caption = f"🚨 **ANOMALÍA DETECTADA**\n\nTipo: `{tipo_alerta}`\nValor: `{valor_actual:.4f}`"
+        caption = f"🚨 **ANOMALÍA BTC DETECTADA**\n\nTipo: `{tipo_alerta}`\nValor: `{valor_actual:.4f}`"
         bot.send_photo(CHAT_ID, f, caption=caption, message_thread_id=THREAD_ID, parse_mode='Markdown')
     if os.path.exists(path): os.remove(path)
 
 def correr_volumen():
-    memoria = cargar_memoria() 
-    print("🚀 MONITOR DE VOLUMEN INDEPENDIENTE ACTIVADO")
+    memoria = cargar_memoria()
+    print("🚀 MONITOR BTC ACTIVADO")
     
     while True:
         try:
-            data, prices = get_volume_data()
+            vols, prices = get_volume_data()
+            if vols is None: time.sleep(60); continue
             
-            for symbol in PARES:
-                if not data[symbol] or prices[symbol] is None: continue
-                
-                # Promediamos el volumen de los exchanges que respondieron
-                vols = np.mean(data[symbol], axis=0)
-                vol_usd = (vols * np.array(prices[symbol])) / 1_000_000
-                
-                df = pd.DataFrame(vol_usd, columns=["Volume_USD"])
-                df["vol_returns"] = df["Volume_USD"].pct_change()
-                
-                ventana = 200
-                df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
-                df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
-                df["upper"] = df["mean_ret"] + (2 * df["std_ret"])
-                df["lower"] = df["mean_ret"] - (2 * df["std_ret"])
-                df = df.dropna()
+            vol_usd = (vols * np.array(prices)) / 1_000_000
+            df = pd.DataFrame(vol_usd, columns=["Volume_USD"])
+            df["vol_returns"] = df["Volume_USD"].pct_change()
+            
+            ventana = 200
+            df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
+            df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
+            df["upper"] = df["mean_ret"] + (2 * df["std_ret"])
+            df["lower"] = df["mean_ret"] - (2 * df["std_ret"])
+            df = df.dropna()
 
-                actual = df["vol_returns"].iloc[-1]
-                tiempo_actual = time.time()
-                
-                estado_par = memoria.get(symbol, {"ultima_alerta_tiempo": 0, "ultima_alerta_tipo": "", "estado_cero": "NEUTRAL"})
-                candidato_tipo = ""
-                
-                if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]):
-                    candidato_tipo = "ANOMALÍA (BANDAS)"
-                elif actual > 0 and estado_par["estado_cero"] != "ARRIBA":
-                    candidato_tipo = "CRUCE CERO (ARRIBA)"
-                    estado_par["estado_cero"] = "ARRIBA"
-                elif actual < 0 and estado_par["estado_cero"] != "ABAJO":
-                    candidato_tipo = "CRUCE CERO (ABAJO)"
-                    estado_par["estado_cero"] = "ABAJO"
+            actual = df["vol_returns"].iloc[-1]
+            tiempo_actual = time.time()
+            candidato_tipo = ""
+            
+            # Lógica de detección única para BTC
+            if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]):
+                candidato_tipo = "ANOMALÍA (BANDAS)"
+            elif actual > 0 and memoria["estado_cero"] != "ARRIBA":
+                candidato_tipo = "CRUCE CERO (ARRIBA)"
+                memoria["estado_cero"] = "ARRIBA"
+            elif actual < 0 and memoria["estado_cero"] != "ABAJO":
+                candidato_tipo = "CRUCE CERO (ABAJO)"
+                memoria["estado_cero"] = "ABAJO"
 
-                if candidato_tipo != "":
-                    if (candidato_tipo != estado_par["ultima_alerta_tipo"]) or (tiempo_actual - estado_par["ultima_alerta_tiempo"] > 14400):
-                        print(f"🎯 Alerta [{symbol}]: {candidato_tipo}")
-                        generar_foto_y_enviar(df, f"{symbol} - {candidato_tipo}", actual)
-                        
-                        memoria[symbol] = {
-                            "ultima_alerta_tiempo": tiempo_actual,
-                            "ultima_alerta_tipo": candidato_tipo,
-                            "estado_cero": estado_par["estado_cero"]
-                        }
-                        guardar_memoria(memoria)
+            # Filtro anti-spam
+            if candidato_tipo != "":
+                if (candidato_tipo != memoria["ultima_alerta_tipo"]) or (tiempo_actual - memoria["ultima_alerta_tiempo"] > 14400):
+                    print(f"🎯 Alerta BTC: {candidato_tipo}")
+                    generar_foto_y_enviar(df, candidato_tipo, actual)
+                    
+                    memoria.update({
+                        "ultima_alerta_tiempo": tiempo_actual,
+                        "ultima_alerta_tipo": candidato_tipo
+                    })
+                    guardar_memoria(memoria)
             
             time.sleep(300)
         except Exception as e:
-            print(f"⚠️ Error en bucle: {e}")
+            print(f"⚠️ Error: {e}")
             time.sleep(60)
 
 if __name__ == '__main__':
