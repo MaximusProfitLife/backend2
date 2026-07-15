@@ -38,33 +38,36 @@ def guardar_memoria(memoria):
         json.dump(memoria, f, indent=4)
 
 def get_volume_data():
-    consolidated_data = {}
-    prices = {}
+    # Estructura corregida: cada par tiene su propia lista de volúmenes por exchange
+    data_struct = {symbol: [] for symbol in PARES}
+    prices = {symbol: None for symbol in PARES}
+    
     for ex_id in EXCHANGES_IDS:
         try:
-            exchange = getattr(ccxt, ex_id)({'timeout': 10000, 'enableRateLimit': True})
+            exchange = getattr(ccxt, ex_id)({'timeout': 5000, 'enableRateLimit': True})
             for symbol in PARES:
                 exch_symbol = "BTC/USD" if (ex_id == 'bitmex' and "BTC" in symbol) else symbol
                 ohlcv = exchange.fetch_ohlcv(exch_symbol, timeframe="1h", limit=720)
+                if len(ohlcv) < 720: continue
+                
                 vols = [candle[5] for candle in ohlcv]
-                consolidated_data.setdefault(symbol, []).append(vols)
-                if ex_id == "binance":
+                data_struct[symbol].append(vols)
+                
+                if ex_id == "binance" and prices[symbol] is None:
                     prices[symbol] = [candle[4] for candle in ohlcv]
         except: continue
-    return consolidated_data, prices
+    return data_struct, prices
 
 def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     plt.style.use('dark_background')
     fig, (ax, ax_bar) = plt.subplots(2, 1, figsize=(12, 9), sharex=True, gridspec_kw={'height_ratios': [2, 1]})
     
-    # Gráfico 1: Rendimiento
     ax.fill_between(range(len(df)), df["lower"], df["upper"], color="gray", alpha=0.15)
     ax.plot(df["vol_returns"].values, color="#a85cfc", linewidth=1)
     ax.plot(df["upper"].values, color="#00ff88", linestyle="--", alpha=0.7)
     ax.plot(df["lower"].values, color="#ff3333", linestyle="--", alpha=0.7)
     ax.set_title(f"ALERTA MAXIMUS | {tipo_alerta}", color='yellow', fontweight='bold')
     
-    # Gráfico 2: Volumen USD
     ax_bar.bar(range(len(df)), df["Volume_USD"], color="blue", alpha=0.7)
     ax_bar.set_ylabel("Millones USD")
     
@@ -78,28 +81,23 @@ def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     if os.path.exists(path): os.remove(path)
 
 def correr_volumen():
-    # La memoria ahora será un diccionario donde cada clave es un par
     memoria = cargar_memoria() 
-    
     print("🚀 MONITOR DE VOLUMEN INDEPENDIENTE ACTIVADO")
     
     while True:
         try:
             data, prices = get_volume_data()
-            if not data: 
-                time.sleep(60); continue
             
             for symbol in PARES:
-                if symbol not in data or symbol not in prices: continue
+                if not data[symbol] or prices[symbol] is None: continue
                 
-                # 1. PROCESAR CADA PAR POR SEPARADO
-                vols = np.array(data[symbol][-1]) 
+                # Promediamos el volumen de los exchanges que respondieron
+                vols = np.mean(data[symbol], axis=0)
                 vol_usd = (vols * np.array(prices[symbol])) / 1_000_000
                 
                 df = pd.DataFrame(vol_usd, columns=["Volume_USD"])
                 df["vol_returns"] = df["Volume_USD"].pct_change()
                 
-                # 2. CALCULAR BANDAS PARA ESTE PAR
                 ventana = 200
                 df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
                 df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
@@ -110,13 +108,9 @@ def correr_volumen():
                 actual = df["vol_returns"].iloc[-1]
                 tiempo_actual = time.time()
                 
-                # 3. RECUPERAR MEMORIA ESPECÍFICA DE ESTE PAR
-                # Si el par no existe en memoria, crea un estado inicial
                 estado_par = memoria.get(symbol, {"ultima_alerta_tiempo": 0, "ultima_alerta_tipo": "", "estado_cero": "NEUTRAL"})
-                
                 candidato_tipo = ""
                 
-                # Lógica de detección (independiente por símbolo)
                 if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]):
                     candidato_tipo = "ANOMALÍA (BANDAS)"
                 elif actual > 0 and estado_par["estado_cero"] != "ARRIBA":
@@ -126,14 +120,11 @@ def correr_volumen():
                     candidato_tipo = "CRUCE CERO (ABAJO)"
                     estado_par["estado_cero"] = "ABAJO"
 
-                # 4. FILTRO INTELIGENTE INDEPENDIENTE
                 if candidato_tipo != "":
                     if (candidato_tipo != estado_par["ultima_alerta_tipo"]) or (tiempo_actual - estado_par["ultima_alerta_tiempo"] > 14400):
-                        
                         print(f"🎯 Alerta [{symbol}]: {candidato_tipo}")
                         generar_foto_y_enviar(df, f"{symbol} - {candidato_tipo}", actual)
                         
-                        # Actualizar solo la entrada de este par en la memoria
                         memoria[symbol] = {
                             "ultima_alerta_tiempo": tiempo_actual,
                             "ultima_alerta_tipo": candidato_tipo,
@@ -142,7 +133,6 @@ def correr_volumen():
                         guardar_memoria(memoria)
             
             time.sleep(300)
-            
         except Exception as e:
             print(f"⚠️ Error en bucle: {e}")
             time.sleep(60)
