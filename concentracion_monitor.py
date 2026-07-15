@@ -85,7 +85,8 @@ def generar_grafico_estilo_original(df, tf, top_volumen):
 
 async def procesar_analisis():
     global memoria_alertas
-    tiempo_actual = time.time()
+    ahora = datetime.now()
+    fecha_hoy = ahora.strftime('%Y-%m-%d')
 
     for tf, limit in timeframes.items():
         temp_data = []
@@ -102,46 +103,36 @@ async def procesar_analisis():
         if temp_data:
             df_combined = pd.concat(temp_data).groupby('timestamp').agg({'close': 'mean', 'volume': 'sum'}).reset_index()
             vol_por_precio = df_combined.groupby('close')['volume'].sum().sort_values(ascending=False)
-            
-            # Obtener el punto de mayor concentración (el más relevante)
-            nuevo_punto = float(vol_por_precio.idxmax())
+            top_volumen = vol_por_precio.head(5)
             precio_actual = df_combined['close'].iloc[-1]
 
-            # Solo actuar si el precio está cerca de la zona (margen 0.4%)
-            if abs(precio_actual - nuevo_punto) < (precio_actual * 0.004):
-                
-                # Recuperar estado de este timeframe
-                estado = memoria_alertas.get(tf, {'zona': 0, 'tiempo': 0})
-                ultima_zona = float(estado.get('zona', 0))
-                ultima_vez = estado.get('tiempo', 0)
-
-                # CÁLCULO DE CAMBIO REAL
-                # 1. ¿El punto se movió significativamente? (> 0.2%)
-                cambio_significativo = abs(nuevo_punto - ultima_zona) / ultima_zona > 0.002
-                # 2. ¿Han pasado 8 horas (28800 segundos)?
-                pasaron_8h = (tiempo_actual - ultima_vez) > 28800
-
-                if cambio_significativo or pasaron_8h:
-                    # Actualizar memoria persistente
-                    memoria_alertas[tf] = {'zona': nuevo_punto, 'tiempo': tiempo_actual}
-                    guardar_memoria(memoria_alertas)
-
-                    # Generar y enviar
-                    foto_path = generar_grafico_estilo_original(df_combined, tf, vol_por_precio.head(5))
-                    msg = (f"🎯 **ZONA DE INTERÉS ALCANZADA ({tf})**\n\n"
-                           f"💵 Precio Actual: `{precio_actual:.2f}`\n"
-                           f"📊 Punto de Volumen: `{nuevo_punto:.2f}`\n\n"
-                           f"🛰 _Monitor Permanente Maximus_")
-
-                    try:
-                        with open(foto_path, 'rb') as f:
-                            await bot.send_photo(TELEGRAM_CHAT_ID, f, caption=msg, 
-                                               message_thread_id=9, parse_mode='Markdown')
-                        print(f"✅ Alerta Enviada [{tf}]: Punto {nuevo_punto:.2f}")
-                    finally:
-                        if os.path.exists(foto_path): os.remove(foto_path)
-                else:
-                    print(f"😴 {tf}: En zona, pero punto {nuevo_punto:.2f} es similar a {ultima_zona:.2f}. Sin alerta.")
+            for zona_precio in top_volumen.index:
+                if abs(precio_actual - zona_precio) < (precio_actual * 0.004):
+                    zona_key = str(round(float(zona_precio), 1)) 
+                    ultima_zona = memoria_alertas.get(tf, {}).get('zona')
+                    ultima_fecha = memoria_alertas.get(tf, {}).get('fecha')
+                    
+                    if zona_key != str(ultima_zona) or fecha_hoy != ultima_fecha:
+                        memoria_alertas[tf] = {'zona': zona_key, 'fecha': fecha_hoy}
+                        guardar_memoria(memoria_alertas)
+                        
+                        foto_path = generar_grafico_estilo_original(df_combined, tf, top_volumen)
+                        msg = (f"🎯 **ZONA DE INTERÉS ALCANZADA ({tf})**\n\n"
+                               f"💵 Precio Actual: `{precio_actual:.2f}`\n"
+                               f"📊 Punto de Volumen: `{zona_precio:.2f}`\n\n"
+                               f"🛰 _Monitor Permanente Maximus_")
+                        
+                        try:
+                            with open(foto_path, 'rb') as f:
+                                await bot.send_photo(TELEGRAM_CHAT_ID, f, caption=msg, 
+                                                     message_thread_id=9, parse_mode='Markdown')
+                            print(f"✅ Alerta Enviada [{tf}]: Zona {zona_key}")
+                        finally:
+                            if os.path.exists(foto_path): os.remove(foto_path)
+                        break
+                    else:
+                        print(f"😴 {tf} ya alertado para {zona_key} hoy.")
+                        break
 
 async def ciclo_principal():
     print(f"🚀 Monitor Maximus iniciado. Memoria física: {DB_FILE}")
