@@ -78,12 +78,10 @@ def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     if os.path.exists(path): os.remove(path)
 
 def correr_volumen():
-    memoria = cargar_memoria()
-    ultima_alerta_tiempo = memoria.get("ultima_alerta_tiempo", 0)
-    ultima_alerta_tipo = memoria.get("ultima_alerta_tipo", "")
-    estado_cero = memoria.get("estado_cero", "NEUTRAL")
+    # La memoria ahora será un diccionario donde cada clave es un par
+    memoria = cargar_memoria() 
     
-    print("🚀 MONITOR DE VOLUMEN INTELIGENTE ACTIVADO")
+    print("🚀 MONITOR DE VOLUMEN INDEPENDIENTE ACTIVADO")
     
     while True:
         try:
@@ -91,60 +89,57 @@ def correr_volumen():
             if not data: 
                 time.sleep(60); continue
             
-            # --- CÁLCULO DE DATOS ---
-            total_vol_usd = None
             for symbol in PARES:
-                if symbol in data and symbol in prices:
-                    vols_avg = np.mean(data[symbol], axis=0)
-                    if total_vol_usd is None: total_vol_usd = (vols_avg * np.array(prices[symbol])) / 1_000_000
-                    else: total_vol_usd += (vols_avg * np.array(prices[symbol])) / 1_000_000
-            
-            df = pd.DataFrame(total_vol_usd, columns=["Volume_USD"])
-            df["vol_returns"] = df["Volume_USD"].pct_change()
-            
-            ventana = 200
-            df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
-            df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
-            df["upper"] = df["mean_ret"] + (2 * df["std_ret"])
-            df["lower"] = df["mean_ret"] - (2 * df["std_ret"])
-            df = df.dropna()
+                if symbol not in data or symbol not in prices: continue
+                
+                # 1. PROCESAR CADA PAR POR SEPARADO
+                vols = np.array(data[symbol][-1]) 
+                vol_usd = (vols * np.array(prices[symbol])) / 1_000_000
+                
+                df = pd.DataFrame(vol_usd, columns=["Volume_USD"])
+                df["vol_returns"] = df["Volume_USD"].pct_change()
+                
+                # 2. CALCULAR BANDAS PARA ESTE PAR
+                ventana = 200
+                df["mean_ret"] = df["vol_returns"].rolling(window=ventana).mean()
+                df["std_ret"] = df["vol_returns"].rolling(window=ventana).std()
+                df["upper"] = df["mean_ret"] + (2 * df["std_ret"])
+                df["lower"] = df["mean_ret"] - (2 * df["std_ret"])
+                df = df.dropna()
 
-            actual = df["vol_returns"].iloc[-1]
-            tiempo_actual = time.time()
-            
-            # --- LÓGICA DE DETECCIÓN ---
-            candidato_tipo = ""
-            
-            # 1. ¿Es Anomalía?
-            if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]):
-                candidato_tipo = "ANOMALÍA (BANDAS)"
-            
-            # 2. ¿Es Cruce? (Independiente de la anomalía)
-            elif actual > 0 and estado_cero != "ARRIBA":
-                candidato_tipo = "CRUCE CERO (ARRIBA)"
-                estado_cero = "ARRIBA"
-            elif actual < 0 and estado_cero != "ABAJO":
-                candidato_tipo = "CRUCE CERO (ABAJO)"
-                estado_cero = "ABAJO"
+                actual = df["vol_returns"].iloc[-1]
+                tiempo_actual = time.time()
+                
+                # 3. RECUPERAR MEMORIA ESPECÍFICA DE ESTE PAR
+                # Si el par no existe en memoria, crea un estado inicial
+                estado_par = memoria.get(symbol, {"ultima_alerta_tiempo": 0, "ultima_alerta_tipo": "", "estado_cero": "NEUTRAL"})
+                
+                candidato_tipo = ""
+                
+                # Lógica de detección (independiente por símbolo)
+                if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]):
+                    candidato_tipo = "ANOMALÍA (BANDAS)"
+                elif actual > 0 and estado_par["estado_cero"] != "ARRIBA":
+                    candidato_tipo = "CRUCE CERO (ARRIBA)"
+                    estado_par["estado_cero"] = "ARRIBA"
+                elif actual < 0 and estado_par["estado_cero"] != "ABAJO":
+                    candidato_tipo = "CRUCE CERO (ABAJO)"
+                    estado_par["estado_cero"] = "ABAJO"
 
-            # --- FILTRO INTELIGENTE ---
-            # Disparamos si:
-            # 1. Hay un candidato.
-            # 2. El tipo de alerta cambió (ej: de Cruce a Anomalía) O pasaron 4 horas.
-            if candidato_tipo != "":
-                if (candidato_tipo != ultima_alerta_tipo) or (tiempo_actual - ultima_alerta_tiempo > 14400):
-                    
-                    print(f"🎯 Alerta enviada: {candidato_tipo}")
-                    generar_foto_y_enviar(df, candidato_tipo, actual)
-                    
-                    ultima_alerta_tiempo = tiempo_actual
-                    ultima_alerta_tipo = candidato_tipo
-                    
-                    guardar_memoria({
-                        "ultima_alerta_tiempo": ultima_alerta_tiempo,
-                        "ultima_alerta_tipo": ultima_alerta_tipo,
-                        "estado_cero": estado_cero
-                    })
+                # 4. FILTRO INTELIGENTE INDEPENDIENTE
+                if candidato_tipo != "":
+                    if (candidato_tipo != estado_par["ultima_alerta_tipo"]) or (tiempo_actual - estado_par["ultima_alerta_tiempo"] > 14400):
+                        
+                        print(f"🎯 Alerta [{symbol}]: {candidato_tipo}")
+                        generar_foto_y_enviar(df, f"{symbol} - {candidato_tipo}", actual)
+                        
+                        # Actualizar solo la entrada de este par en la memoria
+                        memoria[symbol] = {
+                            "ultima_alerta_tiempo": tiempo_actual,
+                            "ultima_alerta_tipo": candidato_tipo,
+                            "estado_cero": estado_par["estado_cero"]
+                        }
+                        guardar_memoria(memoria)
             
             time.sleep(300)
             
