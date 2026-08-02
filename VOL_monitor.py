@@ -63,7 +63,7 @@ def generar_foto_y_enviar(df, tipo_alerta, valor_actual):
     ax.plot(df["vol_returns"].values, color="#a85cfc", linewidth=1)
     ax.plot(df["upper"].values, color="#00ff88", linestyle="--", alpha=0.7)
     ax.plot(df["lower"].values, color="#ff3333", linestyle="--", alpha=0.7)
-    ax.set_title(f"ALERTA BTC | {tipo_alerta}", color='yellow', fontweight='bold')
+    ax.set_title(f" BTC - Rendimiento volumen | {tipo_alerta}", color='yellow', fontweight='bold')
     
     ax_bar.bar(range(len(df)), df["Volume_USD"], color="blue", alpha=0.7)
     ax_bar.set_ylabel("Millones USD")
