@@ -16,7 +16,7 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID_GRUPO_VIP')
 bot = Bot(token=TELEGRAM_TOKEN)
 
 # 📂 Archivo para persistencia de memoria (Nombre solicitado)
-DB_FILE = "concentracion_monitor.json"
+DB_FILE = "volumen_monitor_btc.json"
 
 def cargar_memoria():
     """Carga los datos del archivo JSON si existe."""
