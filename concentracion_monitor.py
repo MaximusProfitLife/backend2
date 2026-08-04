@@ -140,10 +140,15 @@ async def ciclo_principal():
         try:
             await procesar_analisis()
         except Exception as e:
-            print(f"⚠️ Error temporal capturado en el ciclo: {e}")
+            print(f"⚠️ Error en análisis: {e}")
+        except BaseException as e:
+            print(f"⚠️ Excepción del sistema capturada: {e}")
         
-        await asyncio.sleep(900)
-        
+        try:
+            await asyncio.sleep(900)
+        except Exception:
+            await asyncio.sleep(10)
+            
 def correr_concentracion():
     try:
         asyncio.run(ciclo_principal())
