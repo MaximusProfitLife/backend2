@@ -38,16 +38,16 @@ memoria_alertas = cargar_memoria()
 
 # 🔹 LISTA DE EXCHANGES
 exchanges = {
-    'binance': ccxt.binance({'timeout': 5000, 'enableRateLimit': True}),
-    'coinbase': ccxt.coinbase({'timeout': 5000, 'enableRateLimit': True}),
-    'kraken': ccxt.kraken({'timeout': 5000, 'enableRateLimit': True}),
-    'okx': ccxt.okx({'timeout': 5000, 'enableRateLimit': True}),
-    'bybit': ccxt.bybit({'timeout': 5000, 'enableRateLimit': True}),
-    'bingx': ccxt.bingx({'timeout': 5000, 'enableRateLimit': True}),
-    'bitget': ccxt.bitget({'timeout': 5000, 'enableRateLimit': True}),
-    'mexc': ccxt.mexc({'timeout': 5000, 'enableRateLimit': True}),
-    'gate': ccxt.gate({'timeout': 5000, 'enableRateLimit': True}),
-    'kucoin': ccxt.kucoin({'timeout': 5000, 'enableRateLimit': True})
+    'binance': ccxt.binance(),
+    'coinbase': ccxt.coinbase(),
+    'kraken': ccxt.kraken(),
+    'okx': ccxt.okx(),
+    'bybit': ccxt.bybit(),
+    'bingx': ccxt.bingx(),
+    'bitget': ccxt.bitget(),
+    'mexc': ccxt.mexc(),
+    'gate': ccxt.gate(),
+    'kucoin': ccxt.kucoin()
 }
 
 symbol = 'BTC/USDT'
@@ -94,9 +94,7 @@ async def procesar_analisis():
                 df_temp = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 df_temp['timestamp'] = pd.to_datetime(df_temp['timestamp'], unit='ms')
                 temp_data.append(df_temp[['timestamp', 'close', 'volume']])
-            except Exception as e:
-                print(f"⚠️ Error en {name} para {tf}: {e}")
-                continue
+            except: continue
 
         if temp_data:
             df_combined = pd.concat(temp_data).groupby('timestamp').agg({'close': 'mean', 'volume': 'sum'}).reset_index()
