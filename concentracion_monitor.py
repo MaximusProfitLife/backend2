@@ -137,16 +137,11 @@ async def procesar_analisis():
 async def ciclo_principal():
     print(f"🚀 Monitor Maximus iniciado. Memoria física: {DB_FILE}")
     while True:
-        try:
-            await procesar_analisis()
-        except Exception as e:
-            print(f"⚠️ Error crítico atrapado en análisis: {e}")
-        
-        # Espera de forma segura
-        try:
-            await asyncio.sleep(900)
-        except:
-            await asyncio.sleep(10)
+        await procesar_analisis()
+        await asyncio.sleep(900)
+
+# ... (aquí va todo tu código anterior) ...
+
 def correr_concentracion():
     try:
         asyncio.run(ciclo_principal())
