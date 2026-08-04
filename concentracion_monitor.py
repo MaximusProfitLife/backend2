@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import os
 import time
 import asyncio
-from datetime import datetime, timedelta
+import json
+from datetime import datetime
 from telegram import Bot
 from dotenv import load_dotenv
 
@@ -14,8 +15,26 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN_DONA')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID_GRUPO_VIP')
 bot = Bot(token=TELEGRAM_TOKEN)
 
-# 🔹 CONTROL DE COOLDOWN EN MEMORIA (1 alerta cada 12 horas por timeframe)
-ultimas_alertas = {}
+# 📂 Archivo para persistencia de memoria (Nombre solicitado)
+DB_FILE = "volumen_monitor_btc.json"
+
+def cargar_memoria():
+    """Carga los datos del archivo JSON si existe."""
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def guardar_memoria(memoria):
+    """Guarda la memoria actual en el archivo JSON."""
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(memoria, f, indent=4, ensure_ascii=False)
+
+# 🔹 MEMORIA INICIAL (Persistente)
+memoria_alertas = cargar_memoria()
 
 # 🔹 LISTA DE EXCHANGES
 exchanges = {
@@ -28,11 +47,7 @@ exchanges = {
     'bitget': ccxt.bitget(),
     'mexc': ccxt.mexc(),
     'gate': ccxt.gate(),
-    'kucoin': ccxt.kucoin(),
-    'whitebit': ccxt.htx(),
-    'coinex': ccxt.htx(),
-    'deribit': ccxt.htx(),
-    'bitmex': ccxt.htx()
+    'kucoin': ccxt.kucoin()
 }
 
 symbol = 'BTC/USDT'
@@ -51,7 +66,7 @@ def generar_grafico_estilo_original(df, tf, top_volumen):
 
     # MARCA DE AGUA PROFESIONAL
     plt.gcf().text(0.5, 0.45, "MaximusProftLife", fontsize=60, color='white', 
-                   alpha=0.1, ha='center', va='center', rotation=25, weight='bold')
+                    alpha=0.1, ha='center', va='center', rotation=25, weight='bold')
 
     plt.title(f'{symbol} - {tf} | Zonas de Alta Concentración (Multi-Exchange)', color='yellow')
     plt.xlabel('Tiempo')
@@ -65,16 +80,11 @@ def generar_grafico_estilo_original(df, tf, top_volumen):
     return path
 
 async def procesar_analisis():
-    global ultimas_alertas
+    global memoria_alertas
     ahora = datetime.now()
+    fecha_hoy = ahora.strftime('%Y-%m-%d')
 
     for tf, limit in timeframes.items():
-        if tf in ultimas_alertas:
-            tiempo_transcurrido = (ahora - ultimas_alertas[tf]).total_seconds()
-            if tiempo_transcurrido < 43200:
-                print(f"😴 {tf} en cooldown de 12 horas.")
-                continue
-
         temp_data = []
         for name, exchange in exchanges.items():
             try:
@@ -95,32 +105,38 @@ async def procesar_analisis():
             for zona_precio in top_volumen.index:
                 if abs(precio_actual - zona_precio) < (precio_actual * 0.004):
                     zona_key = str(round(float(zona_precio), 1)) 
+                    ultima_zona = memoria_alertas.get(tf, {}).get('zona')
+                    ultima_fecha = memoria_alertas.get(tf, {}).get('fecha')
                     
-                    ultimas_alertas[tf] = ahora
-                    
-                    foto_path = generar_grafico_estilo_original(df_combined, tf, top_volumen)
-                    msg = (f"🎯 **ZONA DE INTERÉS ALCANZADA ({tf})**\n\n"
-                           f"💵 Precio Actual: `{precio_actual:.2f}`\n"
-                           f"📊 Punto de Volumen: `{zona_precio:.2f}`\n\n"
-                           f"🛰 _Monitor Permanente Maximus_")
-                    
-                    try:
-                        with open(foto_path, 'rb') as f:
-                            await bot.send_photo(TELEGRAM_CHAT_ID, f, caption=msg, 
-                                                 message_thread_id=9, parse_mode='Markdown')
-                        print(f"✅ Alerta Enviada [{tf}]: Zona {zona_key}")
-                    finally:
-                        if os.path.exists(foto_path): os.remove(foto_path)
-                    break
-                else:
-                    print(f"😴 {tf} ya evaluado para zona {zona_key}.")
-                    break
+                    if zona_key != str(ultima_zona) or fecha_hoy != ultima_fecha:
+                        memoria_alertas[tf] = {'zona': zona_key, 'fecha': fecha_hoy}
+                        guardar_memoria(memoria_alertas)
+                        
+                        foto_path = generar_grafico_estilo_original(df_combined, tf, top_volumen)
+                        msg = (f"🎯 **ZONA DE INTERÉS ALCANZADA ({tf})**\n\n"
+                               f"💵 Precio Actual: `{precio_actual:.2f}`\n"
+                               f"📊 Punto de Volumen: `{zona_precio:.2f}`\n\n"
+                               f"🛰 _Monitor Permanente Maximus_")
+                        
+                        try:
+                            with open(foto_path, 'rb') as f:
+                                await bot.send_photo(TELEGRAM_CHAT_ID, f, caption=msg, 
+                                                     message_thread_id=9, parse_mode='Markdown')
+                            print(f"✅ Alerta Enviada [{tf}]: Zona {zona_key}")
+                        finally:
+                            if os.path.exists(foto_path): os.remove(foto_path)
+                        break
+                    else:
+                        print(f"😴 {tf} ya alertado para {zona_key} hoy.")
+                        break
 
 async def ciclo_principal():
-    print("🚀 Monitor Maximus iniciado. (Control en memoria - Cooldown 12h)")
+    print(f"🚀 Monitor Maximus iniciado. Memoria física: {DB_FILE}")
     while True:
         await procesar_analisis()
         await asyncio.sleep(900)
+
+# ... (aquí va todo tu código anterior) ...
 
 def correr_concentracion():
     try:
@@ -128,6 +144,7 @@ def correr_concentracion():
     except KeyboardInterrupt:
         print("🛑 Monitor de concentración apagado.")
 
+# ESTO ES LO QUE DEBES PEGAR AL FINAL:
 if __name__ == '__main__':
     print("🚀 MONITOR DE CONCENTRACIÓN ACTIVADO")
     correr_concentracion()
