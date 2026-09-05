@@ -101,15 +101,11 @@ def correr_volumen():
             tiempo_actual = time.time()
             candidato_tipo = ""
             
-            # Lógica de detección única para BTC
-            if (actual > df["upper"].iloc[-1] or actual < df["lower"].iloc[-1]):
-                candidato_tipo = "ANOMALÍA (BANDAS)"
-            elif actual > 0 and memoria["estado_cero"] != "ARRIBA":
-                candidato_tipo = "CRUCE CERO (ARRIBA)"
-                memoria["estado_cero"] = "ARRIBA"
-            elif actual < 0 and memoria["estado_cero"] != "ABAJO":
-                candidato_tipo = "CRUCE CERO (ABAJO)"
-                memoria["estado_cero"] = "ABAJO"
+            # 🔹 Lógica simplificada: solo anomalías por bandas
+            if actual > df["upper"].iloc[-1]:
+                candidato_tipo = "ANOMALÍA (ALZA - BANDA SUPERIOR)"
+            elif actual < df["lower"].iloc[-1]:
+                candidato_tipo = "ANOMALÍA (BAJA - BANDA INFERIOR)"
 
             # Filtro anti-spam
             if candidato_tipo != "":
