@@ -96,7 +96,7 @@ def consolidar_datos(symbol):
 # ===========================
 # 🔹 Funciones de Análisis
 # ===========================
-def evaluar_contexto_patron(df, tipo="spring", n_contexto=4):
+def evaluar_contexto_patron(df, tipo="spring", n_contexto=7):
     if len(df) < n_contexto + 1:
         return {"confirmado": False} 
 
